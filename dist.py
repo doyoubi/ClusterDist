@@ -53,11 +53,11 @@ def print_cluster(masters, slaves, frees, machine_count):
     for line in izip_longest(*all_node, fillvalue=' '): 
         print '\t'.join(repeat('{}', machine_count)).format(*line)
 
-machine_count = 10
-master_count = 50
-slave_count = 50
-free_count = 30
-ms, ss = gen_cluster(5, 5, machine_count)
+machine_count = 5
+master_count = 10
+slave_count = 10
+free_count = 5
+ms, ss = gen_cluster(master_count, slave_count, machine_count)
 
 def gen_free_nodes(machine_count, num):
     machines = list(range(machine_count))
@@ -67,7 +67,7 @@ def gen_free_nodes(machine_count, num):
         nodes[m].append(Node(i, m))
     return nodes
 
-fs = gen_free_nodes(machine_count, 30)
+fs = gen_free_nodes(machine_count, free_count)
 
 print_cluster(ms, ss, fs, machine_count)
 
