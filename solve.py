@@ -2,6 +2,7 @@ import random
 import operator
 from datetime import datetime
 from itertools import repeat, izip_longest
+from collections import defaultdict
 
 from igraph import Graph
 
@@ -58,7 +59,7 @@ def print_cluster(masters, slaves, frees, machine_count):
 machine_count = 5
 master_count = 10
 slave_count = 10
-free_count = 30
+free_count = 3
 try_times = 100000
 ms, ss = gen_cluster(master_count, slave_count, machine_count)
 
@@ -136,7 +137,7 @@ def go_search():
             ss[f.host].append(f)
         print_cluster(ms, ss, repeat([], machine_count), machine_count)
 
-def gen_graph(edges):
+def gen_graph():
     masters = sum(ms, [])
     slaves = sum(ss, [])
     frees = sum(fs, [])
@@ -145,8 +146,8 @@ def gen_graph(edges):
     g.es['weight'] = 1
     assert g.is_weighted()
     ct = machine_count
-    lin = map(len, ms)
-    # lin = map(operator.add, map(len, ss), map(len, fs))
+    # lin = map(len, ms)
+    lin = map(operator.add, map(len, ss), map(len, fs))
     rout = map(len, fs)
     s = 2 * ct
     t = s + 1
@@ -155,11 +156,12 @@ def gen_graph(edges):
     for i, m in enumerate(rout):
         g[i + ct, t] = m
     for i, m in enumerate(lin):
+        if m == 0:
+            continue
         for j, n in enumerate(rout):
             if i == j:
                 continue
             g[i, ct + j] = m
-            edges.append((i, j))
     print g
     start = datetime.utcnow()
     mf = g.maxflow(s, t, g.es['weight'])
@@ -167,9 +169,22 @@ def gen_graph(edges):
     print 'result:', end - start
     print mf.value, sum(rout)
     print mf.flow
-    print map(float, g.es['weight'])
-    return mf.flow
+    print map(float, g.es['weight']), len(g.es['weight'])
 
-edges = []
-flow = gen_graph(edges)
-print edges
+    existing = defaultdict(lambda: defaultdict(lambda: 0))
+    for i in range(ct):
+        for slave in ss[i]:
+            existing[i][slave.master.host] += 1
+    print existing
+
+    for e in g.es:
+        f = mf.flow[e.index]
+        existing_flow = existing[e.source][e.target - ct]
+        print f, existing_flow
+
+
+gen_graph()
+
+    
+
+    
