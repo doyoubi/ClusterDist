@@ -3,6 +3,8 @@ import operator
 from datetime import datetime
 from itertools import repeat, izip_longest
 
+from igraph import Graph
+
 class Node(object):
     def __init__(self, tag, host, master=None):
         self.tag = tag
@@ -56,7 +58,8 @@ def print_cluster(masters, slaves, frees, machine_count):
 machine_count = 5
 master_count = 10
 slave_count = 10
-free_count = 5
+free_count = 30
+try_times = 100000
 ms, ss = gen_cluster(master_count, slave_count, machine_count)
 
 def gen_free_nodes(machine_count, num):
@@ -86,9 +89,17 @@ def dist_slave(machines, ms, fs):
 def sorted_masters(ms):
     return sorted(ms, key=lambda m: len(m.slaves))
 
+def check_all_masters_has_slaves(ms):
+    return all(map(lambda m: len(m.slaves) > 0, ms))
+
+tried = 0
 def recur_dist(ms, fs, curr_f):
     if curr_f == len(fs):
-        return True
+        return check_all_masters_has_slaves(ms)
+    global tried
+    if tried > try_times:
+        raise Exception('exceed try times')
+    tried += 1
     f = fs[curr_f]
     for m in ms: 
         if m.tag in machines[f.host].slice_tags:
@@ -104,7 +115,6 @@ def recur_dist(ms, fs, curr_f):
         machines[f.host].slice_tags.pop()
     return False
 
-
 def init_slice_tag(machines):
     for m in machines:
         for master in m.masters:
@@ -112,11 +122,54 @@ def init_slice_tag(machines):
         for slave in m.slaves:
             m.slice_tags.append(slave.master.tag)
 
-start = datetime.utcnow()
-res =  dist_slave(machines, ms, fs)  # go
-end = datetime.utcnow()
-print 'result:', res, end - start
-if res:
-    for f in sum(fs, []):
-        ss[f.host].append(f)
-    print_cluster(ms, ss, repeat([], machine_count), machine_count)
+def go_search():
+    start = datetime.utcnow()
+    try:
+        res =  dist_slave(machines, ms, fs)  # go
+    except:
+        print 'exceed try times'
+        res = False
+    end = datetime.utcnow()
+    print 'result:', res, end - start
+    if res:
+        for f in sum(fs, []):
+            ss[f.host].append(f)
+        print_cluster(ms, ss, repeat([], machine_count), machine_count)
+
+def gen_graph(edges):
+    masters = sum(ms, [])
+    slaves = sum(ss, [])
+    frees = sum(fs, [])
+    g = Graph().as_directed()
+    g.add_vertices(len(masters) + len(slaves) + len(frees) + 2)
+    g.es['weight'] = 1
+    assert g.is_weighted()
+    ct = machine_count
+    lin = map(len, ms)
+    # lin = map(operator.add, map(len, ss), map(len, fs))
+    rout = map(len, fs)
+    s = 2 * ct
+    t = s + 1
+    for i, m in enumerate(lin):
+        g[s, i] = m
+    for i, m in enumerate(rout):
+        g[i + ct, t] = m
+    for i, m in enumerate(lin):
+        for j, n in enumerate(rout):
+            if i == j:
+                continue
+            g[i, ct + j] = m
+            edges.append((i, j))
+    print g
+    start = datetime.utcnow()
+    mf = g.maxflow(s, t, g.es['weight'])
+    end = datetime.utcnow()
+    print 'result:', end - start
+    print mf.value, sum(rout)
+    print mf.flow
+    print map(float, g.es['weight'])
+    return mf.flow
+
+edges = []
+flow = gen_graph(edges)
+print edges
