@@ -56,7 +56,7 @@ def print_cluster(masters, slaves, frees, machine_count):
     for line in izip_longest(*all_node, fillvalue=' '): 
         print '\t'.join(repeat('{}', machine_count)).format(*line)
 
-machine_count = 5
+machine_count = 3
 master_count = 10
 slave_count = 10
 free_count = 3
@@ -146,7 +146,7 @@ def gen_graph():
     g.es['weight'] = 1
     assert g.is_weighted()
     ct = machine_count
-    # lin = map(len, ms)
+    # lin = map(len, fs)
     lin = map(operator.add, map(len, ss), map(len, fs))
     rout = map(len, fs)
     s = 2 * ct
@@ -155,13 +155,35 @@ def gen_graph():
         g[s, i] = m
     for i, m in enumerate(rout):
         g[i + ct, t] = m
+
+    cap = defaultdict(dict)
+    for i, m in enumerate(lin):
+        for j, n in enumerate(rout):
+            if i == j:
+                continue
+            cap[i][j] = m
+    assert len(ss) == ct
+    for i in range(ct):
+        for slave in ss[i]:
+            cap[i][slave.master.host] -= 1
+            assert cap[i][slave.master.host] >= 0
+    print cap
+    for i in range(ct):
+        for j in range(ct):
+            if i == j:
+                continue
+            masters_in_j = set(slave.master.tag for slave in ss[i] if slave.master.host == j)  # to fight existing distribution error
+            limit = len(ms[j]) - len(masters_in_j)
+            cap[i][j] = min(limit, map(len, fs)[i])
+
     for i, m in enumerate(lin):
         if m == 0:
             continue
         for j, n in enumerate(rout):
             if i == j:
                 continue
-            g[i, ct + j] = m
+            g[i, ct + j] = cap[i][j]
+
     print g
     start = datetime.utcnow()
     mf = g.maxflow(s, t, g.es['weight'])
@@ -171,20 +193,7 @@ def gen_graph():
     print mf.flow
     print map(float, g.es['weight']), len(g.es['weight'])
 
-    existing = defaultdict(lambda: defaultdict(lambda: 0))
-    for i in range(ct):
-        for slave in ss[i]:
-            existing[i][slave.master.host] += 1
-    print existing
-
-    for e in g.es:
-        f = mf.flow[e.index]
-        existing_flow = existing[e.source][e.target - ct]
-        print f, existing_flow
-
-
 gen_graph()
-
     
 
     
