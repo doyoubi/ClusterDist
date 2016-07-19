@@ -61,13 +61,6 @@ def print_cluster(masters, slaves, frees, machine_count):
         print '\t'.join(repeat('{}', machine_count)).format(*line)
     print '-' * 50
 
-machine_count = 3
-master_count = 10
-slave_count = 10
-free_count = 10
-try_times = 100000
-ms, ss = gen_cluster(master_count, slave_count, machine_count)
-
 def gen_free_nodes(machine_count, master_slave_sum, num):
     machines = list(range(machine_count))
     nodes = [list() for i in range(machine_count)]
@@ -75,16 +68,7 @@ def gen_free_nodes(machine_count, master_slave_sum, num):
         m = random.choice(machines)
         nodes[m].append(Node(master_slave_sum + i, m))
     return nodes
-
-fs = gen_free_nodes(machine_count, master_count + slave_count, free_count)
-
-print_cluster(ms, ss, fs, machine_count)
-
-machines = [Machine(i, ms[i], ss[i], fs[i]) for i in range(machine_count)]
     
-# for d in map(Machine.to_dict, machines):
-#     print d
-
 def dist_slave(machines, ms, fs):
     ms = sum(ms, [])
     fs = sum(fs, [])
@@ -281,8 +265,8 @@ class MaxFlowSolver(object):
         g = self._gen_graph()
         ct = len(self.machines)
         flow_in = map(len, self.fs)
-        flow_out = map(len, self.ms)
-        flow_out = list(repeat(50, len(self.ms)))  # warning
+        # flow_out = map(len, self.ms)
+        flow_out = list(repeat(len(sum(self.fs, [])), len(self.ms)))  # warning
         for i, c in enumerate(flow_in):
             g[self.s, i] = c
         for i, c in enumerate(flow_out):
@@ -310,10 +294,6 @@ class MaxFlowSolver(object):
                 f = self.fs[e.source].pop()
                 m = next((m for m in self.ms[e.target - ct] if m.tag not in self.machines[e.source].slice_tags), None)
                 assert m is not None
-                # if m is None:
-                #     self.fs[e.source].append(f)
-                #     print 'conflict: ', e.source, e.target, f.tag, int(mf.flow[edge_index]), self.machines[e.source].slice_tags
-                #     break
                 f.master = m
                 m.slaves.append(f)
                 self.ss[e.source].append(f)
@@ -338,39 +318,73 @@ class MaxFlowSolver(object):
         print map(len, self.os)
         return all(map(operator.ge, flows, map(len, self.os)))
 
+    def gen_slaves_count(self):
+        free_tags = [f.tag for f in self.frees]
+        print sorted(map(lambda m: len(m.slaves), self.masters))
+        print sorted(map(lambda m: sum(1 for s in m.slaves if s.tag in free_tags), self.masters))
 
-cms = deepcopy(ms)
-css = deepcopy(ss)
-cfs = deepcopy(fs)
-cmachines = deepcopy(machines)
-try:
-    solver = MaxFlowSolver(cmachines, sum(cms, []), sum(css, []), sum(cfs, []), cms, css, cfs)
-    print 'orphans: ', [o.tag for o in solver.orphans]
-    solver.fill_orphans()
-    print_cluster(cms, css, cfs, machine_count)
-    print solver.result
-    solver.fill_remaining()
-    print_cluster(cms, css, cfs, machine_count)
-    print solver.result
-    print 'max flow: ', solver.max_flow
-except SolverError as e:
-    print '#' * 50
-    print e.message
-    print '#' * 50
-    solver.max_flow = 0
 
-def check():
-    for m in fs:
-        for f in m:
-            assert f.master is None
-    # assert len(sum(css, [])) > len(sum(ss, []))
-check()
+def main():
+    machine_count = 3
+    master_count = 10
+    slave_count = 10
+    free_count = 10
+    try_times = 100000
 
-print '*' * 100
-all_solver = MaxFlowSolver(machines, sum(ms, []), sum(ss, []), sum(fs, []), ms, ss, fs)
-all_solver.fill_all()
-print_cluster(ms, ss, fs, machine_count)
-print all_solver.result
-print 'max flow: ', solver.max_flow, all_solver.max_flow
+    ms, ss = gen_cluster(master_count, slave_count, machine_count)
+    fs = gen_free_nodes(machine_count, master_count + slave_count, free_count)
+    # ms = [[], [Node(0, 1), Node(1, 1), Node(2, 1)], [Node(3, 2)]]
+    # ss = [[Node(4, 0, ms[2][0])], [], []]
+    # ms[2][0].slaves.append(ss[0][0])
+    # fs = [[Node(5, 0), Node(6, 0), Node(7, 0)], [], [Node(8, 2)]]
+
+    print_cluster(ms, ss, fs, machine_count)
+    machines = [Machine(i, ms[i], ss[i], fs[i]) for i in range(machine_count)]
+    
+    cms = deepcopy(ms)
+    css = deepcopy(ss)
+    cfs = deepcopy(fs)
+    cmachines = deepcopy(machines)
+    try:
+        solver = MaxFlowSolver(cmachines, sum(cms, []), sum(css, []), sum(cfs, []), cms, css, cfs)
+        print 'orphans: ', [o.tag for o in solver.orphans]
+        solver.fill_orphans()
+        print_cluster(cms, css, cfs, machine_count)
+        print solver.result
+        solver.fill_remaining()
+        print_cluster(cms, css, cfs, machine_count)
+        print solver.result
+        print 'max flow: ', solver.max_flow
+    except SolverError as e:
+        print '#' * 50
+        print e.message
+        print '#' * 50
+        solver.max_flow = 0
+    
+    def check():
+        for m in fs:
+            for f in m:
+                assert f.master is None
+        # assert len(sum(css, [])) > len(sum(ss, []))
+    check()
+    
+    print '*' * 100
+    all_solver = MaxFlowSolver(machines, sum(ms, []), sum(ss, []), sum(fs, []), ms, ss, fs)
+    all_solver.fill_all()
+    print_cluster(ms, ss, fs, machine_count)
+    print all_solver.result
+    print 'max flow: ', solver.max_flow, all_solver.max_flow, len(solver.orphans)
+    solver.gen_slaves_count()
+    all_solver.gen_slaves_count()
+    return solver.max_flow != 0 and solver.max_flow != all_solver.max_flow
+
+# while True:
+#     r = main()
+#     if r:
+#         break
+
+main()
+
+
 
 
